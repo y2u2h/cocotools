@@ -8,7 +8,6 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image, ImageColor, ImageDraw
-
 from pycocotools.coco import COCO
 
 

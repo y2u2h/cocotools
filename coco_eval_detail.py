@@ -4,7 +4,6 @@ import time
 
 import numpy as np
 import pandas as pd
-
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
@@ -301,15 +300,21 @@ class MyCOCOeval(COCOeval):
 
         def _summarizeDets():
             areas = len(self.params.areaRngLbl)
-            stats = np.zeros((4 * areas,))
-            for i, lbl in enumerate(self.params.areaRngLbl):
-                stats[2 * i + 0] = _summarize(1, iouThr=None, areaRng=lbl, maxDets=self.params.maxDets[2])
-                stats[2 * i + 1] = _summarize(1, iouThr=0.5, areaRng=lbl, maxDets=self.params.maxDets[2])
-            offset = 2 * areas
+            stats = np.zeros((3 * areas * 2,))
+            offset = 0
 
-            for i, lbl in enumerate(self.params.areaRngLbl):
-                stats[2 * i + 0 + offset] = _summarize(0, iouThr=None, areaRng=lbl, maxDets=self.params.maxDets[2])
-                stats[2 * i + 1 + offset] = _summarize(0, iouThr=0.5, areaRng=lbl, maxDets=self.params.maxDets[2])
+            for i, thr in enumerate([None, 0.5, 0.75]):
+                for j, lbl in enumerate(self.params.areaRngLbl):
+                    stats[areas * i + j + offset] = _summarize(
+                        1, iouThr=thr, areaRng=lbl, maxDets=self.params.maxDets[2]
+                    )
+
+            offset = 3 * areas
+            for i, thr in enumerate([None, 0.5, 0.75]):
+                for j, lbl in enumerate(self.params.areaRngLbl):
+                    stats[areas * i + j + offset] = _summarize(
+                        0, iouThr=thr, areaRng=lbl, maxDets=self.params.maxDets[2]
+                    )
             return stats
 
         if not self.eval:
@@ -425,7 +430,7 @@ class MyCOCOeval(COCOeval):
                 df.to_csv(f"prcurve_raw_{cat}_{areaRngLbl}.csv", float_format="%0.8f")
 
 
-def evaluate(annotation, result, categories, images, areas, recthr_fine):
+def evaluate(annotation, result, categories, images, areas, maxdet, draw_prcurve, recthr_fine):
     cocoGt = COCO(annotation)
     cocoDt = cocoGt.loadRes(result)
     E = MyCOCOeval(cocoGt, cocoDt, "bbox")
@@ -457,14 +462,19 @@ def evaluate(annotation, result, categories, images, areas, recthr_fine):
         E.params.areaRng = area_ranges
         E.params.areaRngLbl = area_labels
 
+    if maxdet > 100:
+        E.params.maxDets[2] = maxdet
+
     if recthr_fine:
         E.params.recThrs = np.linspace(0.0, 1.00, int(np.round((1.00 - 0.0) / 0.001)) + 1, endpoint=True)
 
     E.evaluate()
     E.accumulate()
     E.summarize()
-    E.prcurve()
-    E.prcurve_raw()
+
+    if draw_prcurve:
+        E.prcurve()
+        E.prcurve_raw()
 
 
 def main():
@@ -475,6 +485,8 @@ def main():
     parser.add_argument("-categories", "--categories", nargs="+")
     parser.add_argument("-images", "--images", nargs="+")
     parser.add_argument("-areas", "--areas", nargs="+")
+    parser.add_argument("-maxdet", "--maxdet", type=int, default=100)
+    parser.add_argument("-draw_prcurve", "--draw_prcurve", action="store_true")
     parser.add_argument("-recthr_fine", "--recthr_fine", action="store_true")
 
     args = parser.parse_args()
@@ -484,6 +496,8 @@ def main():
         args.categories,
         args.images,
         args.areas,
+        args.maxdet,
+        args.draw_prcurve,
         args.recthr_fine,
     )
 
