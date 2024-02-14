@@ -268,8 +268,11 @@ def view(
     categories,
     images,
     areas,
+    draw_text,
+    draw_width,
     grid_sizes,
     maxdet,
+    save_gt,
     score_thr,
     search_depth,
     shuffle,
@@ -404,9 +407,10 @@ def view(
             _, _, tw, th = drw_gt.textbbox((0, 0), rect_text)
             tx = x
             ty = y - th - 2
-            drw_gt.rectangle((x, y, x + w - 1, y + h - 1), outline=rect_color)
-            drw_gt.rectangle((tx, ty, tx + tw + 2, ty + th + 2), outline=rect_color, fill=rect_color)
-            drw_gt.text((tx + 1, ty + 0), rect_text, fill=ImageColor.getrgb(text_color))
+            drw_gt.rectangle((x, y, x + w - 1, y + h - 1), outline=rect_color, width=draw_width)
+            if draw_text:
+                drw_gt.rectangle((tx, ty, tx + tw + 2, ty + th + 2), outline=rect_color, fill=rect_color, width=draw_width)
+                drw_gt.text((tx + 1, ty + 0), rect_text, fill=ImageColor.getrgb(text_color))
 
         if roi_mode == 0:
             img_roi = Image.new("RGBA", img_gt.size)
@@ -622,6 +626,10 @@ def view(
         )
         key_press.image_index = 0
 
+        # save image
+        if save_gt and len(iids) == 1:
+            img_gt.save(save_gt)
+
         # show image
         plt.show()
 
@@ -635,11 +643,14 @@ def main():
     parser.add_argument("-categories", "--categories", nargs="+")
     parser.add_argument("-images", "--images", nargs="+")
     parser.add_argument("-areas", "--areas", type=int, nargs="+")
+    parser.add_argument("-draw_text", "--draw_text", action="store_true")
+    parser.add_argument("-draw_width", "--draw_width", type=int, default=1)
     parser.add_argument("-gw", "--grid_width", type=int, default=608)
     parser.add_argument("-gh", "--grid_height", type=int, default=608)
     parser.add_argument("-sgw", "--small_grid_width", type=int, default=32)
     parser.add_argument("-sgh", "--small_grid_height", type=int, default=32)
     parser.add_argument("-maxdet", "--maxdet", type=int, default=100)
+    parser.add_argument("-save_gt", "--save_gt", type=str, default="")
     parser.add_argument("-score_thr", "--score_thr", type=float, default=0.3)
     parser.add_argument("-search_depth", "--search_depth", type=int, default=1, help="search depth from dataset_dir")
     parser.add_argument("-shuffle", "--shuffle", action="store_true")
@@ -656,8 +667,11 @@ def main():
         args.categories,
         args.images,
         args.areas,
+        args.draw_text,
+        args.draw_width,
         (args.grid_width, args.grid_height, args.small_grid_width, args.small_grid_height),
         args.maxdet,
+        args.save_gt,
         args.score_thr,
         args.search_depth,
         args.shuffle,
