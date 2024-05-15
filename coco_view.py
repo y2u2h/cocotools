@@ -270,6 +270,7 @@ def view(
     areas,
     draw_text,
     draw_width,
+    draw_selected_categories,
     grid_sizes,
     maxdet,
     save_gt,
@@ -403,14 +404,22 @@ def view(
                     rect_color = palette[-1]
                     text_color = "white"
 
-            rect_text = f"{cat} {w}x{h}"
+            rect_text = f"{cat} {int(w)}x{int(h)}"
             _, _, tw, th = drw_gt.textbbox((0, 0), rect_text)
             tx = x
             ty = y - th - 2
-            drw_gt.rectangle((x, y, x + w - 1, y + h - 1), outline=rect_color, width=draw_width)
-            if draw_text:
-                drw_gt.rectangle((tx, ty, tx + tw + 2, ty + th + 2), outline=rect_color, fill=rect_color, width=draw_width)
-                drw_gt.text((tx + 1, ty + 0), rect_text, fill=ImageColor.getrgb(text_color))
+
+            if draw_selected_categories is False:
+                drw_gt.rectangle((x, y, x + w - 1, y + h - 1), outline=rect_color, width=draw_width)
+                if draw_text:
+                    drw_gt.rectangle((tx, ty, tx + tw + 2, ty + th + 2), outline=rect_color, fill=rect_color, width=draw_width)
+                    drw_gt.text((tx + 1, ty + 0), rect_text, fill=ImageColor.getrgb(text_color))
+            else:
+                if cat in categories:
+                    drw_gt.rectangle((x, y, x + w - 1, y + h - 1), outline=rect_color, width=draw_width)
+                    if draw_text:
+                        drw_gt.rectangle((tx, ty, tx + tw + 2, ty + th + 2), outline=rect_color, fill=rect_color, width=draw_width)
+                        drw_gt.text((tx + 1, ty + 0), rect_text, fill=ImageColor.getrgb(text_color))
 
         if roi_mode == 0:
             img_roi = Image.new("RGBA", img_gt.size)
@@ -645,6 +654,7 @@ def main():
     parser.add_argument("-areas", "--areas", type=int, nargs="+")
     parser.add_argument("-draw_text", "--draw_text", action="store_true")
     parser.add_argument("-draw_width", "--draw_width", type=int, default=1)
+    parser.add_argument("-draw_selected_categories", "--draw_selected_categories", action="store_true")
     parser.add_argument("-gw", "--grid_width", type=int, default=608)
     parser.add_argument("-gh", "--grid_height", type=int, default=608)
     parser.add_argument("-sgw", "--small_grid_width", type=int, default=32)
@@ -669,6 +679,7 @@ def main():
         args.areas,
         args.draw_text,
         args.draw_width,
+        args.draw_selected_categories,
         (args.grid_width, args.grid_height, args.small_grid_width, args.small_grid_height),
         args.maxdet,
         args.save_gt,
