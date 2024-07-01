@@ -6,7 +6,7 @@ import subprocess
 from tqdm import tqdm
 
 
-def split(dataset_dir, output_dir):
+def split(dataset_dir, output_dir, ffmpeg):
     for vid, video in enumerate(tqdm(sorted(glob.glob(dataset_dir + "/*.yuv")))):
         basename = os.path.splitext(os.path.basename(video))[0]
         st = basename.split("_")
@@ -23,7 +23,10 @@ def split(dataset_dir, output_dir):
 
         output = f"{dst_dir}/{basename}_%03d.png"
 
-        cmd = f"ffmpeg -f rawvideo -pixel_format yuv420p -video_size {video_size} -framerate {frame_rate} -i {video} -pixel_format rgb24 -start_number 0 {output}"
+        if not ffmpeg: 
+            ffmpeg = "ffmpeg"
+
+        cmd = f"{ffmpeg} -f rawvideo -pixel_format yuv420p -video_size {video_size} -framerate {frame_rate} -i {video} -pixel_format rgb24 -start_number 0 {output}"
         print(cmd)
 
         os.makedirs(dst_dir, exist_ok=True)
@@ -35,9 +38,10 @@ def main():
 
     parser.add_argument("dataset_dir", help="dataset directory")
     parser.add_argument("output_dir", help="output directory")
+    parser.add_argument("-ffmpeg", "--ffmpeg", type=str, default="", help="path to ffmpeg")
 
     args = parser.parse_args()
-    split(args.dataset_dir, args.output_dir)
+    split(args.dataset_dir, args.output_dir, args.ffmpeg)
 
 
 if __name__ == "__main__":
