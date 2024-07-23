@@ -1,6 +1,7 @@
 import argparse
 import datetime
 import time
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -322,7 +323,7 @@ class MyCOCOeval(COCOeval):
         summarize = _summarizeDets
         self.stats = summarize()
 
-    def prcurve(self):
+    def prcurve(self, output_dir):
         p = self.params
         precision = self.eval["precision"]
         precision_unsorted = self.eval["precision_unsorted"]
@@ -348,9 +349,12 @@ class MyCOCOeval(COCOeval):
                         "score": sc,
                     }
                 ).set_index("recall")
-                df.to_csv(f"prcurve_{cat}_{areaRngLbl}.csv", float_format="%0.8f")
 
-    def prcurve_raw(self):
+                outdir = Path(output_dir)
+                outdir.mkdir(parents=True, exist_ok=True)
+                df.to_csv(str(outdir.joinpath(f"prcurve_{cat}_{areaRngLbl}.csv")), float_format="%0.8f")
+
+    def prcurve_raw(self, output_dir):
         p = self.params
         gtcnt = self.eval["gtcnt"]
         dtcnt = self.eval["dtcnt"]
@@ -376,18 +380,21 @@ class MyCOCOeval(COCOeval):
             for aind, areaRngLbl in enumerate(p.areaRngLbl):
                 gtc = gtcnt[kind, aind, mind]
                 dtc = dtcnt[kind, aind, mind]
+                if dtc <= 0:
+                    continue
+
                 padding = [-1.0] * (int(dtc[0]) - 1)
                 gtc = np.concatenate([gtc, np.array(padding)])
                 dtc = np.concatenate([dtc, np.array(padding)])
 
-                t = tp[tind, :, kind, aind, mind][0]
-                f = fp[tind, :, kind, aind, mind][0]
-                ts = tp_sum[tind, :, kind, aind, mind][0]
-                fs = fp_sum[tind, :, kind, aind, mind][0]
-                pr = precision[tind, :, kind, aind, mind][0]
-                pr_unsorted = precision_unsorted[tind, :, kind, aind, mind][0]
-                sc = scores[tind, :, kind, aind, mind][0]
-                rc = recall[tind, :, kind, aind, mind][0]
+                t = tp[tind, :, kind, aind, mind][0][0:int(dtc[0])]
+                f = fp[tind, :, kind, aind, mind][0][0:int(dtc[0])]
+                ts = tp_sum[tind, :, kind, aind, mind][0][0:int(dtc[0])]
+                fs = fp_sum[tind, :, kind, aind, mind][0][0:int(dtc[0])]
+                pr = precision[tind, :, kind, aind, mind][0][0:int(dtc[0])]
+                pr_unsorted = precision_unsorted[tind, :, kind, aind, mind][0][0:int(dtc[0])]
+                sc = scores[tind, :, kind, aind, mind][0][0:int(dtc[0])]
+                rc = recall[tind, :, kind, aind, mind][0][0:int(dtc[0])]
 
                 df = pd.DataFrame(
                     {
@@ -415,22 +422,40 @@ class MyCOCOeval(COCOeval):
                     idxs = df[df["score"] > thr].index
                     if len(idxs) > 0:
                         idxthr.append(max(idxs))
+                    else:
+                        idxthr.append(-1)
 
                     score_bin = df[(df["score"] <= (thr + space)) & (df["score"] > thr)]
                     tpnums.append(len(score_bin[score_bin["tp"] == 1]))
                     fpnums.append(len(score_bin[score_bin["fp"] == 1]))
 
-                hist = df.iloc[idxthr]
+                df_ = df[["tp_sum", "fp_sum", "recall", "precision", "precision_unsorted", "score"]]
+                hist = pd.DataFrame(columns=["tp_sum", "fp_sum", "recall", "precision", "precision_unsorted", "score"])
+
+                for i, idx in enumerate(idxthr):
+                    if idx > 0:
+                        hist.loc[i] = df_.iloc[idx].values
+                    else:
+                        hist.loc[i] = [-1, -1, -1.0, -1.0, -1.0, -1.0]
+
+                hist[["tp_sum", "fp_sum"]] = hist[["tp_sum", "fp_sum"]].astype(int)
+                hist[["recall", "precision", "precision_unsorted", "score"]] = hist[["recall", "precision", "precision_unsorted", "score"]].astype(float)
+
                 if not hist.empty:
                     hist = hist[["tp_sum", "fp_sum", "recall", "precision", "precision_unsorted", "score"]]
                     hist["tpnum"] = tpnums
                     hist["fpnum"] = fpnums
-                    hist.to_csv(f"hist_raw_{cat}_{areaRngLbl}.csv", float_format="%0.8f")
 
-                df.to_csv(f"prcurve_raw_{cat}_{areaRngLbl}.csv", float_format="%0.8f")
+                    outdir = Path(output_dir)
+                    outdir.mkdir(parents=True, exist_ok=True)
+                    hist.to_csv(str(outdir.joinpath(f"hist_raw_{cat}_{areaRngLbl}.csv")), float_format="%0.8f")
+
+                outdir = Path(output_dir)
+                outdir.mkdir(parents=True, exist_ok=True)
+                df.to_csv(str(outdir.joinpath(f"prcurve_raw_{cat}_{areaRngLbl}.csv")), float_format="%0.8f")
 
 
-def evaluate(annotation, result, categories, images, areas, maxdet, draw_prcurve, recthr_fine):
+def evaluate(annotation, result, categories, images, areas, maxdet, draw_prcurve, recthr_fine, output_dir):
     cocoGt = COCO(annotation)
     cocoDt = cocoGt.loadRes(result)
     E = MyCOCOeval(cocoGt, cocoDt, "bbox")
@@ -473,8 +498,8 @@ def evaluate(annotation, result, categories, images, areas, maxdet, draw_prcurve
     E.summarize()
 
     if draw_prcurve:
-        E.prcurve()
-        E.prcurve_raw()
+        E.prcurve(output_dir)
+        E.prcurve_raw(output_dir)
 
 
 def main():
@@ -488,6 +513,7 @@ def main():
     parser.add_argument("-maxdet", "--maxdet", type=int, default=100)
     parser.add_argument("-draw_prcurve", "--draw_prcurve", action="store_true")
     parser.add_argument("-recthr_fine", "--recthr_fine", action="store_true")
+    parser.add_argument("-output_dir", "--output_dir", type=str, default="")
 
     args = parser.parse_args()
     evaluate(
@@ -499,6 +525,7 @@ def main():
         args.maxdet,
         args.draw_prcurve,
         args.recthr_fine,
+        args.output_dir,
     )
 
 
