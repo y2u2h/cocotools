@@ -4,6 +4,7 @@ import csv
 import glob
 import json
 import os
+from pathlib import Path
 
 import imagesize
 from tqdm import tqdm
@@ -147,14 +148,18 @@ def convert_det(dataset_dir, annotation_dir, output, remap, scale):
         json.dump(coco_dict, f, indent=2)
 
 
-def convert_vid(sequence_dir, annotation_dir, output, remap, scale):
+def convert_vid(sequence_dir, annotation_dir, output, remap, scale, separate):
     # images
+    coco_images_per_seq = cl.OrderedDict()
     coco_images = []
     coco_image_ids = {}
     iid = 0
     for seq_dir in tqdm(sorted(glob.glob(sequence_dir + "/uav*/"))):
         seq_dir = os.path.dirname(seq_dir)
         prefix = os.path.basename(seq_dir)
+        coco_images_per_seq[prefix] = []
+        if separate:
+            iid = 0
 
         for img in sorted(glob.glob(seq_dir + "/*.jpg")):
             width, height = imagesize.get(img)
@@ -162,21 +167,35 @@ def convert_vid(sequence_dir, annotation_dir, output, remap, scale):
             basename = os.path.splitext(filename)[0]
 
             coco_image_ids[prefix + "_" + basename] = iid
-            coco_images.append(
-                {
-                    "id": iid,
-                    "height": int((float(height) + (scale / 2.0)) / scale),
-                    "width": int((float(width) + (scale / 2.0)) / scale),
-                    "file_name": prefix + "/" + filename,
-                }
-            )
+            if separate:
+                coco_images_per_seq[prefix].append(
+                    {
+                        "id": iid,
+                        "height": int((float(height) + (scale / 2.0)) / scale),
+                        "width": int((float(width) + (scale / 2.0)) / scale),
+                        "file_name": prefix + "/" + filename,
+                    }
+                )
+            else:
+                coco_images.append(
+                    {
+                        "id": iid,
+                        "height": int((float(height) + (scale / 2.0)) / scale),
+                        "width": int((float(width) + (scale / 2.0)) / scale),
+                        "file_name": prefix + "/" + filename,
+                    }
+                )
             iid += 1
 
     # annotations
+    coco_annotations_per_seq = cl.OrderedDict()
     coco_annotations = []
     aid = 0
     for txt in tqdm(sorted(glob.glob(annotation_dir + "/*.txt"))):
         basename = os.path.splitext(os.path.basename(txt))[0]
+        coco_annotations_per_seq[basename] = []
+        if separate:
+            aid = 0
 
         with open(txt, mode="r") as f:
             for row in csv.reader(f):
@@ -199,17 +218,30 @@ def convert_vid(sequence_dir, annotation_dir, output, remap, scale):
 
                     if area > 0:
                         key = basename + "_" + f"{fr:07}"
-                        coco_annotations.append(
-                            {
-                                "id": aid,
-                                "image_id": coco_image_ids[key],
-                                "category_id": cid,
-                                "bbox": [bl, bt, bw, bh],
-                                "area": bw * bh,
-                                "iscrowd": 0,
-                                "ignore": 0,
-                            }
-                        )
+                        if separate:
+                            coco_annotations_per_seq[basename].append(
+                                {
+                                    "id": aid,
+                                    "image_id": coco_image_ids[key],
+                                    "category_id": cid,
+                                    "bbox": [bl, bt, bw, bh],
+                                    "area": bw * bh,
+                                    "iscrowd": 0,
+                                    "ignore": 0,
+                                }
+                            )
+                        else:
+                            coco_annotations.append(
+                                {
+                                    "id": aid,
+                                    "image_id": coco_image_ids[key],
+                                    "category_id": cid,
+                                    "bbox": [bl, bt, bw, bh],
+                                    "area": bw * bh,
+                                    "iscrowd": 0,
+                                    "ignore": 0,
+                                }
+                            )
                         aid += 1
 
     # categories
@@ -229,21 +261,36 @@ def convert_vid(sequence_dir, annotation_dir, output, remap, scale):
         for cid, cat in VISDRONE_CATEGORY.items():
             coco_categories.append({"id": cid, "name": cat, "supercategory": "none"})
 
-    # create json
-    coco_dict = cl.OrderedDict()
-    coco_dict["images"] = coco_images
-    coco_dict["annotations"] = coco_annotations
-    coco_dict["categories"] = coco_categories
+    if separate:
+        for key, imgs, annos in zip(
+            coco_images_per_seq.keys(), coco_images_per_seq.values(), coco_annotations_per_seq.values()
+        ):
+            # create json
+            coco_dict = cl.OrderedDict()
+            coco_dict["images"] = imgs
+            coco_dict["annotations"] = annos
+            coco_dict["categories"] = coco_categories
 
-    with open(output, mode="w") as f:
-        json.dump(coco_dict, f, indent=2)
+            outdir = Path(output)
+            outdir.mkdir(parents=True, exist_ok=True)
+            with open(outdir.joinpath(key + ".json"), mode="w") as f:
+                json.dump(coco_dict, f, indent=2)
+    else:
+        # create json
+        coco_dict = cl.OrderedDict()
+        coco_dict["images"] = coco_images
+        coco_dict["annotations"] = coco_annotations
+        coco_dict["categories"] = coco_categories
+
+        with open(output, mode="w") as f:
+            json.dump(coco_dict, f, indent=2)
 
 
-def convert(dataset_type, dataset_dir, annotation_dir, output, remap, scale):
+def convert(dataset_type, dataset_dir, annotation_dir, output, remap, scale, separate_by_video):
     if dataset_type == "DET":
         convert_det(dataset_dir, annotation_dir, output, remap, scale)
     elif dataset_type == "VID":
-        convert_vid(dataset_dir, annotation_dir, output, remap, scale)
+        convert_vid(dataset_dir, annotation_dir, output, remap, scale, separate_by_video)
     else:
         print(f"Unsupported dataset_type [{dataset_type}].")
 
@@ -257,9 +304,18 @@ def main():
     parser.add_argument("output", help="output annotation file")
     parser.add_argument("-remap", "--remap", action="store_false")
     parser.add_argument("-scale", "--scale", type=float, default=1.0)
+    parser.add_argument("-separate_by_video", "--separate_by_video", action="store_true")
 
     args = parser.parse_args()
-    convert(args.dataset_type, args.dataset_dir, args.annotation_dir, args.output, args.remap, args.scale)
+    convert(
+        args.dataset_type,
+        args.dataset_dir,
+        args.annotation_dir,
+        args.output,
+        args.remap,
+        args.scale,
+        args.separate_by_video,
+    )
 
 
 if __name__ == "__main__":
