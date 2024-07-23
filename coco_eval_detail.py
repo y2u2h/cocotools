@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
@@ -387,14 +388,14 @@ class MyCOCOeval(COCOeval):
                 gtc = np.concatenate([gtc, np.array(padding)])
                 dtc = np.concatenate([dtc, np.array(padding)])
 
-                t = tp[tind, :, kind, aind, mind][0][0:int(dtc[0])]
-                f = fp[tind, :, kind, aind, mind][0][0:int(dtc[0])]
-                ts = tp_sum[tind, :, kind, aind, mind][0][0:int(dtc[0])]
-                fs = fp_sum[tind, :, kind, aind, mind][0][0:int(dtc[0])]
-                pr = precision[tind, :, kind, aind, mind][0][0:int(dtc[0])]
-                pr_unsorted = precision_unsorted[tind, :, kind, aind, mind][0][0:int(dtc[0])]
-                sc = scores[tind, :, kind, aind, mind][0][0:int(dtc[0])]
-                rc = recall[tind, :, kind, aind, mind][0][0:int(dtc[0])]
+                t = tp[tind, :, kind, aind, mind][0][0 : int(dtc[0])]
+                f = fp[tind, :, kind, aind, mind][0][0 : int(dtc[0])]
+                ts = tp_sum[tind, :, kind, aind, mind][0][0 : int(dtc[0])]
+                fs = fp_sum[tind, :, kind, aind, mind][0][0 : int(dtc[0])]
+                pr = precision[tind, :, kind, aind, mind][0][0 : int(dtc[0])]
+                pr_unsorted = precision_unsorted[tind, :, kind, aind, mind][0][0 : int(dtc[0])]
+                sc = scores[tind, :, kind, aind, mind][0][0 : int(dtc[0])]
+                rc = recall[tind, :, kind, aind, mind][0][0 : int(dtc[0])]
 
                 df = pd.DataFrame(
                     {
@@ -439,7 +440,9 @@ class MyCOCOeval(COCOeval):
                         hist.loc[i] = [-1, -1, -1.0, -1.0, -1.0, -1.0]
 
                 hist[["tp_sum", "fp_sum"]] = hist[["tp_sum", "fp_sum"]].astype(int)
-                hist[["recall", "precision", "precision_unsorted", "score"]] = hist[["recall", "precision", "precision_unsorted", "score"]].astype(float)
+                hist[["recall", "precision", "precision_unsorted", "score"]] = hist[
+                    ["recall", "precision", "precision_unsorted", "score"]
+                ].astype(float)
 
                 if not hist.empty:
                     hist = hist[["tp_sum", "fp_sum", "recall", "precision", "precision_unsorted", "score"]]
