@@ -645,6 +645,10 @@ def evaluate(
         E.params.recThrs = np.linspace(0.0, 1.00, int(np.round((1.00 - 0.0) / 0.001)) + 1, endpoint=True)
 
     if frame_by_frame:
+        E.evaluate(display=False)
+        E.accumulate(display=False)
+        E.summarize()
+
         if images:
             iids = copy.deepcopy(E.params.imgIds)
         else:
@@ -657,6 +661,12 @@ def evaluate(
             line += f"mAP50_{lbl},"
         for lbl in E.params.areaRngLbl:
             line += f"mAR50_{lbl},"
+        for lbl in E.params.areaRngLbl:
+            line += f"TP50_{lbl},"
+        for lbl in E.params.areaRngLbl:
+            line += f"FP50_{lbl},"
+        for lbl in E.params.areaRngLbl:
+            line += f"TP+FN50_{lbl},"
         print(line)
 
         for iid in iids:
