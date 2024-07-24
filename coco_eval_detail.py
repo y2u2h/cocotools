@@ -1,4 +1,5 @@
 import argparse
+import copy
 import datetime
 import time
 from pathlib import Path
@@ -13,6 +14,50 @@ from pycocotools.cocoeval import COCOeval
 class MyCOCOeval(COCOeval):
     def __init__(self, cocoGt=None, cocoDt=None, iouType="segm"):
         super().__init__(cocoGt, cocoDt, iouType)
+
+    def evaluate(self, display=True):
+        """
+        Run per image evaluation on given images and store results (a list of dict) in self.evalImgs
+        :return: None
+        """
+        tic = time.time()
+        if display:
+            print("Running per image evaluation...")
+        p = self.params
+        # add backward compatibility if useSegm is specified in params
+        if not p.useSegm is None:
+            p.iouType = "segm" if p.useSegm == 1 else "bbox"
+            print("useSegm (deprecated) is not None. Running {} evaluation".format(p.iouType))
+        if display:
+            print("Evaluate annotation type *{}*".format(p.iouType))
+        p.imgIds = list(np.unique(p.imgIds))
+        if p.useCats:
+            p.catIds = list(np.unique(p.catIds))
+        p.maxDets = sorted(p.maxDets)
+        self.params = p
+
+        self._prepare()
+        # loop through images, area range, max detection number
+        catIds = p.catIds if p.useCats else [-1]
+
+        if p.iouType == "segm" or p.iouType == "bbox":
+            computeIoU = self.computeIoU
+        elif p.iouType == "keypoints":
+            computeIoU = self.computeOks
+        self.ious = {(imgId, catId): computeIoU(imgId, catId) for imgId in p.imgIds for catId in catIds}
+
+        evaluateImg = self.evaluateImg
+        maxDet = p.maxDets[-1]
+        self.evalImgs = [
+            evaluateImg(imgId, catId, areaRng, maxDet)
+            for catId in catIds
+            for areaRng in p.areaRng
+            for imgId in p.imgIds
+        ]
+        self._paramsEval = copy.deepcopy(self.params)
+        toc = time.time()
+        if display:
+            print("DONE (t={:0.2f}s).".format(toc - tic))
 
     def evaluateImg(self, imgId, catId, aRng, maxDet):
         """
@@ -94,13 +139,14 @@ class MyCOCOeval(COCOeval):
             "dtIgnore": dtIg,
         }
 
-    def accumulate(self, p=None):
+    def accumulate(self, p=None, display=True):
         """
         Accumulate per image evaluation results and store the result in self.eval
         :param p: input params for evaluation
         :return: None
         """
-        print("Accumulating evaluation results...")
+        if display:
+            print("Accumulating evaluation results...")
         tic = time.time()
         if not self.evalImgs:
             print("Please run evaluate() first")
@@ -158,6 +204,36 @@ class MyCOCOeval(COCOeval):
         precision_raw_unsorted = -np.ones((T, len_raw, K, A, M))
         recall_raw = -np.ones((T, len_raw, K, A, M))
         scores_raw = -np.ones((T, len_raw, K, A, M))
+
+        # get tp/fp for each images
+        tp_num = -np.ones((T, K, A, I0))
+        fp_num = -np.ones((T, K, A, I0))
+        tpfn_num = -np.ones((K, A, I0))
+        for k, k0 in enumerate(k_list):
+            Nk = k0 * A0 * I0
+            for a, a0 in enumerate(a_list):
+                Na = a0 * I0
+                for i, i0 in enumerate(i_list):
+                    e = self.evalImgs[Nk + Na + i]
+                    if e is not None:
+                        dtScores = np.array(e["dtScores"])
+                        inds = np.argsort(-dtScores, kind="mergesort")
+                        dtm = np.array(e["dtMatches"])[:, inds]
+                        dtIg = np.array(e["dtIgnore"])[:, inds]
+                        gtIg = np.array(e["gtIgnore"])
+                        npig = np.count_nonzero(gtIg == 0)
+
+                        tps = np.logical_and(dtm, np.logical_not(dtIg))
+                        fps = np.logical_and(np.logical_not(dtm), np.logical_not(dtIg))
+
+                        tp_sum = np.cumsum(tps, axis=1).astype(dtype=np.float64)
+                        fp_sum = np.cumsum(fps, axis=1).astype(dtype=np.float64)
+
+                        if tp_sum.size > 0:
+                            tp_num[:, k, a, i] = tp_sum[:, -1]
+                        if fp_sum.size > 0:
+                            fp_num[:, k, a, i] = fp_sum[:, -1]
+                        tpfn_num[k, a, i] = npig
 
         # retrieve E at each category, area range, and max number of detections
         for k, k0 in enumerate(k_list):
@@ -257,17 +333,21 @@ class MyCOCOeval(COCOeval):
             "precision_raw_unsorted": precision_raw_unsorted,
             "recall_raw": recall_raw,
             "scores_raw": scores_raw,
+            "tp_num": tp_num,
+            "fp_num": fp_num,
+            "tpfn_num": tpfn_num,
         }
         toc = time.time()
-        print("DONE (t={:0.2f}s).".format(toc - tic))
+        if display:
+            print("DONE (t={:0.2f}s).".format(toc - tic))
 
-    def summarize(self):
+    def summarize(self, frame_by_frame=False):
         """
         Compute and display summary metrics for evaluation results.
         Note this functin can *only* be applied on the default parameter setting
         """
 
-        def _summarize(ap=1, iouThr=None, areaRng="all", maxDets=100):
+        def _summarize(ap=1, iouThr=None, areaRng="all", maxDets=100, display=True):
             p = self.params
             iStr = " {:<18} {} @[ IoU={:<9} | area={:>12s} | maxDets={:>3d} ] = {:0.3f}"
             titleStr = "Average Precision" if ap == 1 else "Average Recall"
@@ -286,6 +366,28 @@ class MyCOCOeval(COCOeval):
                     t = np.where(iouThr == p.iouThrs)[0]
                     s = s[t]
                 s = s[:, :, :, aind, mind]
+            elif ap == 2:
+                # dimension of tp_num: [TxKxAxI]
+                tp_num = self.eval["tp_num"]
+                if iouThr is None:
+                    raise Exception("Please specify iouThr when ap == 2")
+                else:
+                    t = np.where(iouThr == p.iouThrs)[0]
+                    tp_num = tp_num[t]
+                s = tp_num[:, :, aind, :].reshape(-1)
+            elif ap == 3:
+                # dimension of tp_num: [TxKxAxI]
+                fp_num = self.eval["fp_num"]
+                if iouThr is None:
+                    raise Exception("Please specify iouThr when ap == 3")
+                else:
+                    t = np.where(iouThr == p.iouThrs)[0]
+                    fp_num = fp_num[t]
+                s = fp_num[:, :, aind, :].reshape(-1)
+            elif ap == 4:
+                # dimension of tpfn_num: [KxAxI]
+                tpfn_num = self.eval["tpfn_num"]
+                s = tpfn_num[:, aind, :].reshape(-1)
             else:
                 # dimension of recall: [TxKxAxM]
                 s = self.eval["recall"]
@@ -293,11 +395,18 @@ class MyCOCOeval(COCOeval):
                     t = np.where(iouThr == p.iouThrs)[0]
                     s = s[t]
                 s = s[:, :, aind, mind]
-            if len(s[s > -1]) == 0:
-                mean_s = -1
+
+            if ap < 2:
+                if len(s[s > -1]) == 0:
+                    mean_s = -1
+                else:
+                    mean_s = np.mean(s[s > -1])
             else:
-                mean_s = np.mean(s[s > -1])
-            print(iStr.format(titleStr, typeStr, iouStr, areaRng, maxDets, mean_s))
+                mean_s = np.sum(s[s > -1])
+
+            if display:
+                print(iStr.format(titleStr, typeStr, iouStr, areaRng, maxDets, mean_s))
+
             return mean_s
 
         def _summarizeDets():
@@ -319,9 +428,46 @@ class MyCOCOeval(COCOeval):
                     )
             return stats
 
+        def _summarizeFrameDets():
+            areas = len(self.params.areaRngLbl)
+            stats = np.zeros((areas * 5,))
+            offset = 0
+
+            for i, lbl in enumerate(self.params.areaRngLbl):
+                stats[i + offset] = _summarize(
+                    1, iouThr=0.5, areaRng=lbl, maxDets=self.params.maxDets[2], display=False
+                )
+
+            offset += areas
+            for i, lbl in enumerate(self.params.areaRngLbl):
+                stats[i + offset] = _summarize(
+                    0, iouThr=0.5, areaRng=lbl, maxDets=self.params.maxDets[2], display=False
+                )
+
+            offset += areas
+            for i, lbl in enumerate(self.params.areaRngLbl):
+                stats[i + offset] = _summarize(
+                    2, iouThr=0.5, areaRng=lbl, maxDets=self.params.maxDets[2], display=False
+                )
+
+            offset += areas
+            for i, lbl in enumerate(self.params.areaRngLbl):
+                stats[i + offset] = _summarize(
+                    3, iouThr=0.5, areaRng=lbl, maxDets=self.params.maxDets[2], display=False
+                )
+
+            offset += areas
+            for i, lbl in enumerate(self.params.areaRngLbl):
+                stats[i + offset] = _summarize(
+                    4, iouThr=0.5, areaRng=lbl, maxDets=self.params.maxDets[2], display=False
+                )
+
+            return stats
+
         if not self.eval:
             raise Exception("Please run accumulate() first")
-        summarize = _summarizeDets
+
+        summarize = _summarizeDets if not frame_by_frame else _summarizeFrameDets
         self.stats = summarize()
 
     def prcurve(self, output_dir):
@@ -458,7 +604,9 @@ class MyCOCOeval(COCOeval):
                 df.to_csv(str(outdir.joinpath(f"prcurve_raw_{cat}_{areaRngLbl}.csv")), float_format="%0.8f")
 
 
-def evaluate(annotation, result, categories, images, areas, maxdet, draw_prcurve, recthr_fine, output_dir):
+def evaluate(
+    annotation, result, categories, images, areas, maxdet, draw_prcurve, recthr_fine, output_dir, frame_by_frame
+):
     cocoGt = COCO(annotation)
     cocoDt = cocoGt.loadRes(result)
     E = MyCOCOeval(cocoGt, cocoDt, "bbox")
@@ -496,13 +644,39 @@ def evaluate(annotation, result, categories, images, areas, maxdet, draw_prcurve
     if recthr_fine:
         E.params.recThrs = np.linspace(0.0, 1.00, int(np.round((1.00 - 0.0) / 0.001)) + 1, endpoint=True)
 
-    E.evaluate()
-    E.accumulate()
-    E.summarize()
+    if frame_by_frame:
+        if images:
+            iids = copy.deepcopy(E.params.imgIds)
+        else:
+            iids = [v["id"] for k, v in cocoGt.imgs.items()]
 
-    if draw_prcurve:
-        E.prcurve(output_dir)
-        E.prcurve_raw(output_dir)
+        names = {v["id"]: v["file_name"] for k, v in cocoGt.imgs.items() if v["id"] in iids}
+
+        line = f"#image_id,file_name,"
+        for lbl in E.params.areaRngLbl:
+            line += f"mAP50_{lbl},"
+        for lbl in E.params.areaRngLbl:
+            line += f"mAR50_{lbl},"
+        print(line)
+
+        for iid in iids:
+            E.params.imgIds = [iid]
+            E.evaluate(display=False)
+            E.accumulate(display=False)
+            E.summarize(frame_by_frame=True)
+
+            line = f"{iid},{names[iid]},"
+            for st in E.stats:
+                line += f"{st:.3f},"
+            print(line)
+    else:
+        E.evaluate()
+        E.accumulate()
+        E.summarize()
+
+        if draw_prcurve:
+            E.prcurve(output_dir)
+            E.prcurve_raw(output_dir)
 
 
 def main():
@@ -517,6 +691,7 @@ def main():
     parser.add_argument("-draw_prcurve", "--draw_prcurve", action="store_true")
     parser.add_argument("-recthr_fine", "--recthr_fine", action="store_true")
     parser.add_argument("-output_dir", "--output_dir", type=str, default="")
+    parser.add_argument("-frame_by_frame", "--frame_by_frame", action="store_true")
 
     args = parser.parse_args()
     evaluate(
@@ -529,6 +704,7 @@ def main():
         args.draw_prcurve,
         args.recthr_fine,
         args.output_dir,
+        args.frame_by_frame,
     )
 
 
