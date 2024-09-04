@@ -58,7 +58,7 @@ class MyCOCO(COCO):
         return res
 
 
-def convert(input_file, width, height, output_filename, categoryrange):
+def convert(input_file, width, height, output_filename, category_id_range, image_id_offset):
     coco = MyCOCO()
     res = coco.loadRes(input_file)
 
@@ -66,13 +66,18 @@ def convert(input_file, width, height, output_filename, categoryrange):
         print("# VTMBMS Block Statistics", file=f)
         print(f"# Sequence size: [{width}x{height}]", file=f)
 
-        if categoryrange:
-            print(f"# Block Statistic Type: Category; Integer; {categoryrange}", file=f)
+        if category_id_range:
+            print(f"# Block Statistic Type: Category; Integer; {category_id_range}", file=f)
         else:
             print("# Block Statistic Type: Category; Integer; [0, 90]", file=f)
 
         print("# Block Statistic Type: Score; Integer; [0, 100]", file=f)
-        for frame, anns in res.imgToAnns.items():
+        for poc, anns in res.imgToAnns.items():
+            poc += image_id_offset
+            if poc < 0:
+                print(f"POC must be greater or equal than 0. [poc={poc}]")
+                exit(1)
+
             for ann in anns:
                 bl = int(ann["bbox"][0])
                 bt = int(ann["bbox"][1])
@@ -81,11 +86,11 @@ def convert(input_file, width, height, output_filename, categoryrange):
                 category_id = ann["category_id"]
                 score = int(ann["score"] * 100.0)
                 print(
-                    f"BlockStat: POC {frame} @({bl:>4},{bt:>4}) [{bw:>4}x{bh:>4}] Category={category_id}",
+                    f"BlockStat: POC {poc} @({bl:>4},{bt:>4}) [{bw:>4}x{bh:>4}] Category={category_id}",
                     file=f,
                 )
                 print(
-                    f"BlockStat: POC {frame} @({bl:>4},{bt:>4}) [{bw:>4}x{bh:>4}] Score={score}",
+                    f"BlockStat: POC {poc} @({bl:>4},{bt:>4}) [{bw:>4}x{bh:>4}] Score={score}",
                     file=f,
                 )
 
@@ -96,10 +101,11 @@ def main():
     parser.add_argument("sequence_width", help="sequence width")
     parser.add_argument("sequence_height", help="sequence height")
     parser.add_argument("output_filename", help="output VTMBMS file name")
-    parser.add_argument("--categoryrange", nargs=2, type=int, help="Range of COCO categories")
+    parser.add_argument("--category_id_range", nargs=2, type=int, help="Range of COCO categories")
+    parser.add_argument("--image_id_offset", type=int, help="This offset is added to image_id in COCO result file")
 
     args = parser.parse_args()
-    convert(args.input_file, args.sequence_width, args.sequence_height, args.output_filename, args.categoryrange)
+    convert(args.input_file, args.sequence_width, args.sequence_height, args.output_filename, args.category_id_range, args.image_id_offset)
 
 
 if __name__ == "__main__":
