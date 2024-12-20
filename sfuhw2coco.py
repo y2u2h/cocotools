@@ -104,7 +104,13 @@ def convert(sequence_dir, annotation_dir, output, scale, vtmbms_dir):
             print(f"# Sequence size: [{iwidth}x{iheight}]", file=vtmf)
             print("# Block Statistic Type: CATEGORY; Integer; [0, 77]", file=vtmf)
 
-        for txt in sorted(glob.glob(annotation_dir + f"/{cls}/{key}/{seq}_seq_*.txt")):
+        txtlist = sorted(glob.glob(annotation_dir + f"/{cls}/{key}/{seq}_seq_*.txt"))
+        if len(txtlist) == 0 and (key == "RaceHorsesC" or key == "RaceHorsesD"):
+            print(f"Replace {key} -> RaceHorses")
+            key = "RaceHorses"
+            txtlist = sorted(glob.glob(annotation_dir + f"/{cls}/{key}/{seq}_seq_*.txt"))
+
+        for txt in txtlist:
             basename = os.path.splitext(os.path.basename(txt))[0]
             parts = basename.partition("_seq_")
             key = parts[0] + "_" + parts[2]
