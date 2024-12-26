@@ -58,7 +58,7 @@ SFU_HW_CATEGORIES = {
 }
 
 
-def convert(sequence_dir, annotation_dir, output, scale, vtmbms_dir):
+def convert(sequence_dir, annotation_dir, output, scale, check_all_data, vtmbms_dir):
     # images
     coco_images = []
     coco_image_ids = {}
@@ -113,57 +113,64 @@ def convert(sequence_dir, annotation_dir, output, scale, vtmbms_dir):
         for txt in txtlist:
             basename = os.path.splitext(os.path.basename(txt))[0]
             parts = basename.partition("_seq_")
-            key = parts[0] + "_" + parts[2]
+            image_key = parts[0] + "_" + parts[2]
             frame = parts[2]
 
-            with open(txt, mode="r") as f:
-                for row in csv.reader(f, delimiter=" "):
-                    cid = int(row[SFU_HW_FORMAT["object_id"]])
-                    normalized_bbox_center_x = float(row[SFU_HW_FORMAT["bbox_center_x"]])
-                    normalized_bbox_center_y = float(row[SFU_HW_FORMAT["bbox_center_y"]])
-                    normalized_bbox_w = float(row[SFU_HW_FORMAT["bbox_width"]])
-                    normalized_bbox_h = float(row[SFU_HW_FORMAT["bbox_height"]])
+            if image_key in coco_image_ids.keys():
+                with open(txt, mode="r") as f:
+                    for row in csv.reader(f, delimiter=" "):
+                        cid = int(row[SFU_HW_FORMAT["object_id"]])
+                        normalized_bbox_center_x = float(row[SFU_HW_FORMAT["bbox_center_x"]])
+                        normalized_bbox_center_y = float(row[SFU_HW_FORMAT["bbox_center_y"]])
+                        normalized_bbox_w = float(row[SFU_HW_FORMAT["bbox_width"]])
+                        normalized_bbox_h = float(row[SFU_HW_FORMAT["bbox_height"]])
 
-                    bbox_center_x = width * normalized_bbox_center_x
-                    bbox_center_y = height * normalized_bbox_center_y
-                    bbox_w = width * normalized_bbox_w
-                    bbox_h = height * normalized_bbox_h
+                        bbox_center_x = width * normalized_bbox_center_x
+                        bbox_center_y = height * normalized_bbox_center_y
+                        bbox_w = width * normalized_bbox_w
+                        bbox_h = height * normalized_bbox_h
 
-                    bl = (bbox_center_x - (bbox_w / 2.0)) / scale
-                    bt = (bbox_center_y - (bbox_h / 2.0)) / scale
-                    bw = bbox_w / scale
-                    bh = bbox_h / scale
+                        bl = (bbox_center_x - (bbox_w / 2.0)) / scale
+                        bt = (bbox_center_y - (bbox_h / 2.0)) / scale
+                        bw = bbox_w / scale
+                        bh = bbox_h / scale
 
-                    # clip values
-                    bl = 0.0 if bl < 0.0 else width if bl > width else bl
-                    bt = 0.0 if bt < 0.0 else height if bt > height else bt
-                    bw = width - bl if (bl + bw) > width else bw
-                    bh = height - bt if (bt + bh) > height else bh
-                    area = bw * bh
+                        # clip values
+                        bl = 0.0 if bl < 0.0 else width if bl > width else bl
+                        bt = 0.0 if bt < 0.0 else height if bt > height else bt
+                        bw = width - bl if (bl + bw) > width else bw
+                        bh = height - bt if (bt + bh) > height else bh
+                        area = bw * bh
 
-                    if area > 0:
-                        coco_annotations.append(
-                            {
-                                "id": aid,
-                                "image_id": coco_image_ids[key],
-                                "category_id": cid,
-                                "bbox": [bl, bt, bw, bh],
-                                "area": area,
-                                "iscrowd": 0,
-                                "ignore": 0,
-                            }
-                        )
-                        aid += 1
-
-                        if vtmf:
-                            ibl = int(bl)
-                            ibt = int(bt)
-                            ibw = int(bw)
-                            ibh = int(bh)
-                            print(
-                                f"BlockStat: POC {frame} @({ibl:>4},{ibt:>4}) [{ibw:>4}x{ibh:>4}] CATEGORY={cid}",
-                                file=vtmf,
+                        if area > 0:
+                            coco_annotations.append(
+                                {
+                                    "id": aid,
+                                    "image_id": coco_image_ids[image_key],
+                                    "category_id": cid,
+                                    "bbox": [bl, bt, bw, bh],
+                                    "area": area,
+                                    "iscrowd": 0,
+                                    "ignore": 0,
+                                }
                             )
+                            aid += 1
+
+                            if vtmf:
+                                ibl = int(bl)
+                                ibt = int(bt)
+                                ibw = int(bw)
+                                ibh = int(bh)
+                                print(
+                                    f"BlockStat: POC {frame} @({ibl:>4},{ibt:>4}) [{ibw:>4}x{ibh:>4}] CATEGORY={cid}",
+                                    file=vtmf,
+                                )
+            else: # image_key not in coco_image_ids.keys()
+                if check_all_data:
+                    print(f"Error: {image_key} is not in coco_image_ids")
+                    exit(1)
+                else:
+                    print(f"{image_key} is not in coco_image_ids")
 
         if vtmf is not None:
             vtmf.close()
@@ -190,10 +197,11 @@ def main():
     parser.add_argument("annotation_dir", help="annotation directory")
     parser.add_argument("output", help="output annotation file")
     parser.add_argument("-scale", "--scale", type=float, default=1.0)
+    parser.add_argument("-check_all_data", "--check_all_data", action="store_true")
     parser.add_argument("-vtmbms_dir", "--vtmbms_dir", default="")
 
     args = parser.parse_args()
-    convert(args.dataset_dir, args.annotation_dir, args.output, args.scale, args.vtmbms_dir)
+    convert(args.dataset_dir, args.annotation_dir, args.output, args.scale, args.check_all_data, args.vtmbms_dir)
 
 
 if __name__ == "__main__":

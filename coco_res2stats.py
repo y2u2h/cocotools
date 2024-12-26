@@ -101,8 +101,8 @@ def main():
     parser.add_argument("sequence_width", help="sequence width")
     parser.add_argument("sequence_height", help="sequence height")
     parser.add_argument("output_filename", help="output VTMBMS file name")
-    parser.add_argument("--category_id_range", nargs=2, type=int, help="Range of COCO categories")
-    parser.add_argument("--image_id_offset", type=int, help="This offset is added to image_id in COCO result file")
+    parser.add_argument("--category_id_range", nargs=2, type=int, default=None, help="Range of COCO categories")
+    parser.add_argument("--image_id_offset", type=int, default=0, help="This offset is added to image_id in COCO result file")
 
     args = parser.parse_args()
     convert(args.input_file, args.sequence_width, args.sequence_height, args.output_filename, args.category_id_range, args.image_id_offset)
