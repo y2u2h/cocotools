@@ -64,8 +64,9 @@ def convert(input_file, width, height, frames, output_file, start_frame, vtmbms_
                 bt = bbox[1]
                 bw = bbox[2]
                 bh = bbox[3]
+                track_id = ann["track_id"]
                 print(
-                    f"BlockStat: POC {poc} @({bl:>4},{bt:>4}) [{bw:>4}x{bh:>4}] CATEGORY=0",
+                    f"BlockStat: POC {poc} @({bl:>4},{bt:>4}) [{bw:>4}x{bh:>4}] TRACK_ID={track_id}",
                     file=vtmf,
                 )
         vtmf.close()
