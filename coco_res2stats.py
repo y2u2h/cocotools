@@ -58,7 +58,7 @@ class MyCOCO(COCO):
         return res
 
 
-def convert(input_file, width, height, output_filename, category_id_range, image_id_offset):
+def convert(input_file, width, height, output_filename, category_id_range, image_id_offset, delta_qp_range):
     coco = MyCOCO()
     res = coco.loadRes(input_file)
 
@@ -72,6 +72,10 @@ def convert(input_file, width, height, output_filename, category_id_range, image
             print("# Block Statistic Type: Category; Integer; [0, 90]", file=f)
 
         print("# Block Statistic Type: Score; Integer; [0, 100]", file=f)
+
+        if delta_qp_range:
+            print(f"# Block Statistic Type: DeltaQP; Integer; {[dqp * 100 for dqp in delta_qp_range]}", file=f)
+
         for poc, anns in res.imgToAnns.items():
             poc += image_id_offset
             if poc < 0:
@@ -94,6 +98,17 @@ def convert(input_file, width, height, output_filename, category_id_range, image
                     file=f,
                 )
 
+                if delta_qp_range:
+                    if "delta_qp" in ann:
+                        if ann["delta_qp"] > 0:
+                            delta_qp = int(ann["delta_qp"] * 100.0 + 0.5)
+                        else:
+                            delta_qp = int(ann["delta_qp"] * 100.0 - 0.5)
+                        print(
+                            f"BlockStat: POC {poc} @({bl:>4},{bt:>4}) [{bw:>4}x{bh:>4}] DeltaQP={delta_qp}",
+                            file=f,
+                        )
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -101,11 +116,20 @@ def main():
     parser.add_argument("sequence_width", help="sequence width")
     parser.add_argument("sequence_height", help="sequence height")
     parser.add_argument("output_filename", help="output VTMBMS file name")
-    parser.add_argument("--category_id_range", nargs=2, type=int, default=None, help="Range of COCO categories")
-    parser.add_argument("--image_id_offset", type=int, default=0, help="This offset is added to image_id in COCO result file")
+    parser.add_argument("--category_id_range", nargs=2, type=int, default=None, help="range of COCO categories")
+    parser.add_argument("--image_id_offset", type=int, default=0, help="offset of image id")
+    parser.add_argument("--delta_qp_range", nargs=2, type=int, default=None, help="range of delta QP")
 
     args = parser.parse_args()
-    convert(args.input_file, args.sequence_width, args.sequence_height, args.output_filename, args.category_id_range, args.image_id_offset)
+    convert(
+        args.input_file,
+        args.sequence_width,
+        args.sequence_height,
+        args.output_filename,
+        args.category_id_range,
+        args.image_id_offset,
+        args.delta_qp_range,
+    )
 
 
 if __name__ == "__main__":
