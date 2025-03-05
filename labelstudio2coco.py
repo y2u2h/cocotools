@@ -2,6 +2,202 @@ import argparse
 import collections as cl
 import itertools
 import json
+import pathlib
+
+COCO_CLASSES = [
+    "__background__",
+    "person",
+    "bicycle",
+    "car",
+    "motorcycle",
+    "airplane",
+    "bus",
+    "train",
+    "truck",
+    "boat",
+    "traffic light",
+    "fire hydrant",
+    "N/A",
+    "stop sign",
+    "parking meter",
+    "bench",
+    "bird",
+    "cat",
+    "dog",
+    "horse",
+    "sheep",
+    "cow",
+    "elephant",
+    "bear",
+    "zebra",
+    "giraffe",
+    "N/A",
+    "backpack",
+    "umbrella",
+    "N/A",
+    "N/A",
+    "handbag",
+    "tie",
+    "suitcase",
+    "frisbee",
+    "skis",
+    "snowboard",
+    "sports ball",
+    "kite",
+    "baseball bat",
+    "baseball glove",
+    "skateboard",
+    "surfboard",
+    "tennis racket",
+    "bottle",
+    "N/A",
+    "wine glass",
+    "cup",
+    "fork",
+    "knife",
+    "spoon",
+    "bowl",
+    "banana",
+    "apple",
+    "sandwich",
+    "orange",
+    "broccoli",
+    "carrot",
+    "hot dog",
+    "pizza",
+    "donut",
+    "cake",
+    "chair",
+    "couch",
+    "potted plant",
+    "bed",
+    "N/A",
+    "dining table",
+    "N/A",
+    "N/A",
+    "toilet",
+    "N/A",
+    "tv",
+    "laptop",
+    "mouse",
+    "remote",
+    "keyboard",
+    "cell phone",
+    "microwave",
+    "oven",
+    "toaster",
+    "sink",
+    "refrigerator",
+    "N/A",
+    "book",
+    "clock",
+    "vase",
+    "scissors",
+    "teddy bear",
+    "hair drier",
+    "toothbrush",
+    "N/A",
+]
+
+COCO_SUPERCATEGORIES = [
+    "person",  # person
+    "vehicle",  # bicycle
+    "vehicle",  # car
+    "vehicle",  # motorcycle
+    "vehicle",  # airplane
+    "vehicle",  # bus
+    "vehicle",  # train
+    "vehicle",  # truck
+    "vehicle",  # boat
+    "outdoor",  # traffic light
+    "outdoor",  # fire hydrant
+    "N/A",  # N/A
+    "outdoor",  # stop sign
+    "outdoor",  # parking meter
+    "outdoor",  # bench
+    "animal",  # bird
+    "animal",  # cat
+    "animal",  # dog
+    "animal",  # horse
+    "animal",  # sheep
+    "animal",  # cow
+    "animal",  # elephant
+    "animal",  # bear
+    "animal",  # zebra
+    "animal",  # giraffe
+    "N/A",  # N/A
+    "accessory",  # backpack
+    "accessory",  # umbrella
+    "N/A",  # N/A
+    "N/A",  # N/A
+    "accessory",  # handbag
+    "accessory",  # tie
+    "accessory",  # suitcase
+    "sports",  # frisbee
+    "sports",  # skis
+    "sports",  # snowboard
+    "sports",  # sports ball
+    "sports",  # kite
+    "sports",  # baseball bat
+    "sports",  # baseball glove
+    "sports",  # skateboard
+    "sports",  # surfboard
+    "sports",  # tennis racket
+    "kitchen",  # bottle
+    "kitchen",  # N/A
+    "kitchen",  # wine glass
+    "kitchen",  # cup
+    "kitchen",  # fork
+    "kitchen",  # knife
+    "kitchen",  # spoon
+    "kitchen",  # bowl
+    "food",  # banana
+    "food",  # apple
+    "food",  # sandwich
+    "food",  # orange
+    "food",  # broccoli
+    "food",  # carrot
+    "food",  # hot dog
+    "food",  # pizza
+    "food",  # donut
+    "food",  # cake
+    "furniture",  # chair
+    "furniture",  # couch
+    "furniture",  # potted plant
+    "furniture",  # bed
+    "N/A",  # N/A
+    "furniture",  # dining table
+    "N/A",  # N/A
+    "N/A",  # N/A
+    "furniture",  # toilet
+    "N/A",  # N/A
+    "electronic",  # tv
+    "electronic",  # laptop
+    "electronic",  # mouse
+    "electronic",  # remote
+    "electronic",  # keyboard
+    "electronic",  # cell phone
+    "appliance",  # microwave
+    "appliance",  # oven
+    "appliance",  # toaster
+    "appliance",  # sink
+    "appliance",  # refrigerator
+    "N/A",  # N/A
+    "indoor",  # book
+    "indoor",  # clock
+    "indoor",  # vase
+    "indoor",  # scissors
+    "indoor",  # teddy bear
+    "indoor",  # hair drier
+    "indoor",  # toothbrush
+    "N/A",  # N/A
+]
+
+COCO_CATEGORY_IDS = {
+    COCO_CLASSES[i]: i for i, cls in enumerate(COCO_CLASSES) if cls != "N/A" and cls != "__background__"
+}
+MIN_ID = COCO_CATEGORY_IDS["person"]
+MAX_ID = COCO_CATEGORY_IDS["toothbrush"]
 
 
 def convert(input_file, width, height, frames, output_file, start_frame, vtmbms_file):
@@ -16,15 +212,30 @@ def convert(input_file, width, height, frames, output_file, start_frame, vtmbms_
         if vtmf:
             print("# VTMBMS Block Statistics", file=vtmf)
             print(f"# Sequence size: [{width}x{height}]", file=vtmf)
+            print(f"# Block Statistic Type: CATEGORY_ID; Integer; [{MIN_ID}, {MAX_ID}]", file=vtmf)
             print(f"# Block Statistic Type: TRACK_ID; Integer; [1, {result_count}]", file=vtmf)
 
+    coco_categories = []
+    for category_name, category_id in COCO_CATEGORY_IDS.items():
+        coco_categories.append(
+            {
+                "id": category_id,
+                "name": category_name,
+                "supercategory": COCO_SUPERCATEGORIES[category_id],
+            }
+        )
+
+    coco_images = {}
     coco_annotations = [[] for _ in range(frames)]
     aid = 1
     track_id = 1
     for ann in result:
-        ann = ann["value"]["sequence"]
+        value = ann["value"]
+        sequence = value["sequence"]
+        category_name = value["labels"][0]
+        category_id = COCO_CATEGORY_IDS[category_name]
 
-        for seq in ann:
+        for seq in sequence:
             image_id = seq["frame"] - start_frame
             x = seq["x"]
             y = seq["y"]
@@ -41,10 +252,19 @@ def convert(input_file, width, height, frames, output_file, start_frame, vtmbms_
             area = bw * bh
 
             if area > 0:
+                if image_id not in coco_images:
+                    coco_images[image_id] = {
+                        "id": image_id,
+                        "height": height,
+                        "width": width,
+                        "file_name": f"dummy_{image_id:07d}.jpg",
+                    }
+
                 coco_annotations[image_id].append(
                     {
                         "id": aid,
                         "image_id": image_id,
+                        "category_id": category_id,
                         "bbox": [bl, bt, bw, bh],
                         "area": area,
                         "iscrowd": 0,
@@ -52,6 +272,7 @@ def convert(input_file, width, height, frames, output_file, start_frame, vtmbms_
                         "track_id": track_id,
                     }
                 )
+
                 aid += 1
         track_id += 1
 
@@ -71,10 +292,18 @@ def convert(input_file, width, height, frames, output_file, start_frame, vtmbms_
                 )
         vtmf.close()
 
+    output_path = pathlib.Path(output_file)
+
     coco_dict = cl.OrderedDict()
     coco_dict = list(itertools.chain.from_iterable(coco_annotations))
+    with open(str(output_path), mode="w") as f:
+        json.dump(coco_dict, f, indent=2)
 
-    with open(output_file, mode="w") as f:
+    coco_dict = cl.OrderedDict()
+    coco_dict["images"] = [img for img in coco_images.values()]
+    coco_dict["annotations"] = list(itertools.chain.from_iterable(coco_annotations))
+    coco_dict["categories"] = coco_categories
+    with open(str(f"{output_path.parent}/{output_path.stem}_gt{output_path.suffix}"), mode="w") as f:
         json.dump(coco_dict, f, indent=2)
 
 

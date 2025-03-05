@@ -1,6 +1,7 @@
 import argparse
 
 import numpy as np
+
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 

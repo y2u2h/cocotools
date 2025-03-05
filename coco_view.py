@@ -8,6 +8,7 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image, ImageColor, ImageDraw
+
 from pycocotools.coco import COCO
 
 
@@ -412,13 +413,17 @@ def view(
             if draw_selected_categories is False:
                 drw_gt.rectangle((x, y, x + w - 1, y + h - 1), outline=rect_color, width=draw_width)
                 if draw_text:
-                    drw_gt.rectangle((tx, ty, tx + tw + 2, ty + th + 2), outline=rect_color, fill=rect_color, width=draw_width)
+                    drw_gt.rectangle(
+                        (tx, ty, tx + tw + 2, ty + th + 2), outline=rect_color, fill=rect_color, width=draw_width
+                    )
                     drw_gt.text((tx + 1, ty + 0), rect_text, fill=ImageColor.getrgb(text_color))
             else:
                 if cat in categories:
                     drw_gt.rectangle((x, y, x + w - 1, y + h - 1), outline=rect_color, width=draw_width)
                     if draw_text:
-                        drw_gt.rectangle((tx, ty, tx + tw + 2, ty + th + 2), outline=rect_color, fill=rect_color, width=draw_width)
+                        drw_gt.rectangle(
+                            (tx, ty, tx + tw + 2, ty + th + 2), outline=rect_color, fill=rect_color, width=draw_width
+                        )
                         drw_gt.text((tx + 1, ty + 0), rect_text, fill=ImageColor.getrgb(text_color))
 
         if roi_mode == 0:

@@ -23,7 +23,7 @@ def split(dataset_dir, output_dir, ffmpeg):
 
         output = f"{dst_dir}/{basename}_%03d.png"
 
-        if not ffmpeg: 
+        if not ffmpeg:
             ffmpeg = "ffmpeg"
 
         cmd = f"{ffmpeg} -f rawvideo -pixel_format yuv420p -video_size {video_size} -framerate {frame_rate} -i {video} -pixel_format rgb24 -start_number 0 {output}"

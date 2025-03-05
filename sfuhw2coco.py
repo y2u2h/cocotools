@@ -4,6 +4,7 @@ import csv
 import glob
 import json
 import os
+from pathlib import Path
 
 import imagesize
 from tqdm import tqdm
@@ -58,14 +59,24 @@ SFU_HW_CATEGORIES = {
 }
 
 
-def convert(sequence_dir, annotation_dir, output, scale, check_all_data, vtmbms_dir):
+def convert(sequence_dir, annotation_dir, output, scale, vtmbms_dir, check_all_data, separate):
     # images
+    coco_images_per_seq = cl.OrderedDict()
     coco_images = []
     coco_image_ids = {}
     iid = 0
-    for seq_dir in tqdm(sorted(glob.glob(sequence_dir + "/*/"))):
-        seq_dir = os.path.dirname(seq_dir)
+    for key in tqdm(SFU_HW_SEQUENCES.keys()):
+        seq_path = Path(sequence_dir + "/" + key)
+
+        if not seq_path.exists() and key == "Kimono":
+            print(f"Replace {key} -> Kimono1")
+            seq_path = Path(sequence_dir + "/" + "Kimono1")
+
+        seq_dir = str(seq_path)
         prefix = os.path.basename(seq_dir)
+        coco_images_per_seq[key] = []
+        if separate:
+            iid = 0
 
         for img in sorted(glob.glob(seq_dir + "/*.png")):
             width, height = imagesize.get(img)
@@ -73,27 +84,42 @@ def convert(sequence_dir, annotation_dir, output, scale, check_all_data, vtmbms_
             basename = os.path.splitext(filename)[0]
 
             coco_image_ids[basename] = iid
-            coco_images.append(
-                {
-                    "id": iid,
-                    "height": int((float(height) + (scale / 2.0)) / scale),
-                    "width": int((float(width) + (scale / 2.0)) / scale),
-                    "file_name": prefix + "/" + filename,
-                }
-            )
+            if separate:
+                coco_images_per_seq[key].append(
+                    {
+                        "id": iid,
+                        "height": int((float(height) + (scale / 2.0)) / scale),
+                        "width": int((float(width) + (scale / 2.0)) / scale),
+                        "file_name": prefix + "/" + filename,
+                    }
+                )
+            else:
+                coco_images.append(
+                    {
+                        "id": iid,
+                        "height": int((float(height) + (scale / 2.0)) / scale),
+                        "width": int((float(width) + (scale / 2.0)) / scale),
+                        "file_name": prefix + "/" + filename,
+                    }
+                )
             iid += 1
 
     # annotations
     if vtmbms_dir:
         os.makedirs(vtmbms_dir, exist_ok=True)
 
+    coco_annotations_per_seq = cl.OrderedDict()
     coco_annotations = []
-    aid = 0
+    aid = 1
     for key, val in tqdm(SFU_HW_SEQUENCES.items()):
         cls = val[0]
         seq = val[1]
         width = float(val[2])
         height = float(val[3])
+
+        coco_annotations_per_seq[key] = []
+        if separate:
+            aid = 1
 
         vtmf = None
         if vtmbms_dir:
@@ -107,8 +133,8 @@ def convert(sequence_dir, annotation_dir, output, scale, check_all_data, vtmbms_
         txtlist = sorted(glob.glob(annotation_dir + f"/{cls}/{key}/{seq}_seq_*.txt"))
         if len(txtlist) == 0 and (key == "RaceHorsesC" or key == "RaceHorsesD"):
             print(f"Replace {key} -> RaceHorses")
-            key = "RaceHorses"
-            txtlist = sorted(glob.glob(annotation_dir + f"/{cls}/{key}/{seq}_seq_*.txt"))
+            parent_dir = "RaceHorses"
+            txtlist = sorted(glob.glob(annotation_dir + f"/{cls}/{parent_dir}/{seq}_seq_*.txt"))
 
         for txt in txtlist:
             basename = os.path.splitext(os.path.basename(txt))[0]
@@ -143,17 +169,30 @@ def convert(sequence_dir, annotation_dir, output, scale, check_all_data, vtmbms_
                         area = bw * bh
 
                         if area > 0:
-                            coco_annotations.append(
-                                {
-                                    "id": aid,
-                                    "image_id": coco_image_ids[image_key],
-                                    "category_id": cid,
-                                    "bbox": [bl, bt, bw, bh],
-                                    "area": area,
-                                    "iscrowd": 0,
-                                    "ignore": 0,
-                                }
-                            )
+                            if separate:
+                                coco_annotations_per_seq[key].append(
+                                    {
+                                        "id": aid,
+                                        "image_id": coco_image_ids[image_key],
+                                        "category_id": cid,
+                                        "bbox": [bl, bt, bw, bh],
+                                        "area": area,
+                                        "iscrowd": 0,
+                                        "ignore": 0,
+                                    }
+                                )
+                            else:
+                                coco_annotations.append(
+                                    {
+                                        "id": aid,
+                                        "image_id": coco_image_ids[image_key],
+                                        "category_id": cid,
+                                        "bbox": [bl, bt, bw, bh],
+                                        "area": area,
+                                        "iscrowd": 0,
+                                        "ignore": 0,
+                                    }
+                                )
                             aid += 1
 
                             if vtmf:
@@ -165,7 +204,7 @@ def convert(sequence_dir, annotation_dir, output, scale, check_all_data, vtmbms_
                                     f"BlockStat: POC {frame} @({ibl:>4},{ibt:>4}) [{ibw:>4}x{ibh:>4}] CATEGORY={cid}",
                                     file=vtmf,
                                 )
-            else: # image_key not in coco_image_ids.keys()
+            else:  # image_key not in coco_image_ids.keys()
                 if check_all_data:
                     print(f"Error: {image_key} is not in coco_image_ids")
                     exit(1)
@@ -180,14 +219,29 @@ def convert(sequence_dir, annotation_dir, output, scale, check_all_data, vtmbms_
     for cid, cat in SFU_HW_CATEGORIES.items():
         coco_categories.append({"id": cid, "name": cat, "supercategory": "none"})
 
-    # create json
-    coco_dict = cl.OrderedDict()
-    coco_dict["images"] = coco_images
-    coco_dict["annotations"] = coco_annotations
-    coco_dict["categories"] = coco_categories
+    if separate:
+        for key, imgs, annos in zip(
+            coco_images_per_seq.keys(), coco_images_per_seq.values(), coco_annotations_per_seq.values()
+        ):
+            # create json
+            coco_dict = cl.OrderedDict()
+            coco_dict["images"] = imgs
+            coco_dict["annotations"] = annos
+            coco_dict["categories"] = coco_categories
 
-    with open(output, mode="w") as f:
-        json.dump(coco_dict, f, indent=2)
+            outdir = Path(output)
+            outdir.mkdir(parents=True, exist_ok=True)
+            with open(outdir.joinpath(key + ".json"), mode="w") as f:
+                json.dump(coco_dict, f, indent=2)
+    else:
+        # create json
+        coco_dict = cl.OrderedDict()
+        coco_dict["images"] = coco_images
+        coco_dict["annotations"] = coco_annotations
+        coco_dict["categories"] = coco_categories
+
+        with open(output, mode="w") as f:
+            json.dump(coco_dict, f, indent=2)
 
 
 def main():
@@ -199,9 +253,18 @@ def main():
     parser.add_argument("-scale", "--scale", type=float, default=1.0)
     parser.add_argument("-check_all_data", "--check_all_data", action="store_true")
     parser.add_argument("-vtmbms_dir", "--vtmbms_dir", default="")
+    parser.add_argument("-separate_by_video", "--separate_by_video", action="store_true")
 
     args = parser.parse_args()
-    convert(args.dataset_dir, args.annotation_dir, args.output, args.scale, args.check_all_data, args.vtmbms_dir)
+    convert(
+        args.dataset_dir,
+        args.annotation_dir,
+        args.output,
+        args.scale,
+        args.vtmbms_dir,
+        args.check_all_data,
+        args.separate_by_video,
+    )
 
 
 if __name__ == "__main__":
