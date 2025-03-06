@@ -225,7 +225,17 @@ def convert(input_file, width, height, frames, output_file, start_frame, vtmbms_
             }
         )
 
-    coco_images = {}
+    coco_images = []
+    for image_id in range(frames):
+        coco_images.append(
+            {
+                "id": image_id,
+                "height": height,
+                "width": width,
+                "file_name": f"dummy_{image_id:07d}.jpg",
+            }
+        )
+
     coco_annotations = [[] for _ in range(frames)]
     aid = 1
     track_id = 1
@@ -252,14 +262,6 @@ def convert(input_file, width, height, frames, output_file, start_frame, vtmbms_
             area = bw * bh
 
             if area > 0:
-                if image_id not in coco_images:
-                    coco_images[image_id] = {
-                        "id": image_id,
-                        "height": height,
-                        "width": width,
-                        "file_name": f"dummy_{image_id:07d}.jpg",
-                    }
-
                 coco_annotations[image_id].append(
                     {
                         "id": aid,
@@ -300,7 +302,7 @@ def convert(input_file, width, height, frames, output_file, start_frame, vtmbms_
         json.dump(coco_dict, f, indent=2)
 
     coco_dict = cl.OrderedDict()
-    coco_dict["images"] = [img for img in coco_images.values()]
+    coco_dict["images"] = coco_images
     coco_dict["annotations"] = list(itertools.chain.from_iterable(coco_annotations))
     coco_dict["categories"] = coco_categories
     with open(str(f"{output_path.parent}/{output_path.stem}_gt{output_path.suffix}"), mode="w") as f:
