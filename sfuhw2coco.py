@@ -9,7 +9,7 @@ from pathlib import Path
 import imagesize
 from tqdm import tqdm
 
-SFU_HW_FORMAT = {
+SFUHW_FORMAT = {
     "object_id": 0,
     "bbox_center_x": 1,
     "bbox_center_y": 2,
@@ -17,8 +17,9 @@ SFU_HW_FORMAT = {
     "bbox_height": 4,
 }
 
-SFU_HW_SEQUENCES = {
+SFUHW_SEQUENCES = {
     "Traffic": ("ClassA", "Traffic_2560x1600_30_crop", 2560, 1600),
+    "PeopleOnStreet": ("ClassA", "PeopleOnStreet_2560x1600_30_crop", 2560, 1600),
     "ParkScene": ("ClassB", "ParkScene_1920x1080_24", 1920, 1080),
     "Cactus": ("ClassB", "Cactus_1920x1080_50", 1920, 1080),
     "BasketballDrive": ("ClassB", "BasketballDrive_1920x1080_50", 1920, 1080),
@@ -34,7 +35,7 @@ SFU_HW_SEQUENCES = {
     "RaceHorsesD": ("ClassD", "RaceHorses_416x240_30", 416, 240),
 }
 
-SFU_HW_CATEGORIES = {
+SFUHW_CATEGORIES = {
     0: "person",
     1: "bicycle",
     2: "car",
@@ -54,18 +55,69 @@ SFU_HW_CATEGORIES = {
     60: "dining table",
     63: "laptop",
     67: "cell phone",
+    73: "book",
     74: "clock",
     77: "teddy bear",
 }
 
+SFUHW_TO_COCO_ID = {
+    "person": 1,
+    "bicycle": 2,
+    "car": 3,
+    "bus": 6,
+    "truck": 8,
+    "boat": 9,
+    "bench": 15,
+    "horse": 19,
+    "backpack": 27,
+    "umbrella": 28,
+    "handbag": 31,
+    "tie": 32,
+    "sports ball": 37,
+    "cup": 47,
+    "chair": 62,
+    "potted plant": 64,
+    "dining table": 67,
+    "laptop": 73,
+    "cell phone": 77,
+    "book": 84,
+    "clock": 85,
+    "teddy bear": 88,
+}
 
-def convert(sequence_dir, annotation_dir, output, scale, vtmbms_dir, check_all_data, separate):
+SFUHW_TO_COCO_SUPERCATEGORY = {
+    "person": "person",
+    "bicycle": "vehicle",
+    "car": "vehicle",
+    "bus": "vehicle",
+    "truck": "vehicle",
+    "boat": "vehicle",
+    "bench": "outdoor",
+    "horse": "animal",
+    "backpack": "accessory",
+    "umbrella": "accessory",
+    "handbag": "accessory",
+    "tie": "accessory",
+    "sports ball": "sports",
+    "cup": "kitchen",
+    "chair": "furniture",
+    "potted plant": "furniture",
+    "dining table": "furniture",
+    "laptop": "electronic",
+    "cell phone": "electronic",
+    "book": "indoor",
+    "clock": "indoor",
+    "teddy bear": "indoor",
+}
+
+
+def convert(sequence_dir, annotation_dir, output, remap, scale, vtmbms_dir, check_all_data, separate):
     # images
     coco_images_per_seq = cl.OrderedDict()
     coco_images = []
     coco_image_ids = {}
     iid = 0
-    for key in tqdm(SFU_HW_SEQUENCES.keys()):
+    for key in tqdm(SFUHW_SEQUENCES.keys()):
         seq_path = Path(sequence_dir + "/" + key)
 
         if not seq_path.exists() and key == "Kimono":
@@ -111,7 +163,7 @@ def convert(sequence_dir, annotation_dir, output, scale, vtmbms_dir, check_all_d
     coco_annotations_per_seq = cl.OrderedDict()
     coco_annotations = []
     aid = 1
-    for key, val in tqdm(SFU_HW_SEQUENCES.items()):
+    for key, val in tqdm(SFUHW_SEQUENCES.items()):
         cls = val[0]
         seq = val[1]
         width = float(val[2])
@@ -145,11 +197,14 @@ def convert(sequence_dir, annotation_dir, output, scale, vtmbms_dir, check_all_d
             if image_key in coco_image_ids.keys():
                 with open(txt, mode="r") as f:
                     for row in csv.reader(f, delimiter=" "):
-                        cid = int(row[SFU_HW_FORMAT["object_id"]])
-                        normalized_bbox_center_x = float(row[SFU_HW_FORMAT["bbox_center_x"]])
-                        normalized_bbox_center_y = float(row[SFU_HW_FORMAT["bbox_center_y"]])
-                        normalized_bbox_w = float(row[SFU_HW_FORMAT["bbox_width"]])
-                        normalized_bbox_h = float(row[SFU_HW_FORMAT["bbox_height"]])
+                        cid = int(row[SFUHW_FORMAT["object_id"]])
+                        if remap:
+                            cid = SFUHW_TO_COCO_ID[SFUHW_CATEGORIES[cid]]
+
+                        normalized_bbox_center_x = float(row[SFUHW_FORMAT["bbox_center_x"]])
+                        normalized_bbox_center_y = float(row[SFUHW_FORMAT["bbox_center_y"]])
+                        normalized_bbox_w = float(row[SFUHW_FORMAT["bbox_width"]])
+                        normalized_bbox_h = float(row[SFUHW_FORMAT["bbox_height"]])
 
                         bbox_center_x = width * normalized_bbox_center_x
                         bbox_center_y = height * normalized_bbox_center_y
@@ -216,8 +271,11 @@ def convert(sequence_dir, annotation_dir, output, scale, vtmbms_dir, check_all_d
 
     # categories
     coco_categories = []
-    for cid, cat in SFU_HW_CATEGORIES.items():
-        coco_categories.append({"id": cid, "name": cat, "supercategory": "none"})
+    for cid, cat in SFUHW_CATEGORIES.items():
+        supercat = SFUHW_TO_COCO_SUPERCATEGORY[cat]
+        if remap:
+            cid = SFUHW_TO_COCO_ID[cat]
+        coco_categories.append({"id": cid, "name": cat, "supercategory": supercat})
 
     if separate:
         for key, imgs, annos in zip(
@@ -250,6 +308,7 @@ def main():
     parser.add_argument("dataset_dir", help="dataset directory")
     parser.add_argument("annotation_dir", help="annotation directory")
     parser.add_argument("output", help="output annotation file")
+    parser.add_argument("-remap", "--remap", action="store_false")
     parser.add_argument("-scale", "--scale", type=float, default=1.0)
     parser.add_argument("-check_all_data", "--check_all_data", action="store_true")
     parser.add_argument("-vtmbms_dir", "--vtmbms_dir", default="")
@@ -260,6 +319,7 @@ def main():
         args.dataset_dir,
         args.annotation_dir,
         args.output,
+        args.remap,
         args.scale,
         args.vtmbms_dir,
         args.check_all_data,
