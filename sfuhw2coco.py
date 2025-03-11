@@ -9,6 +9,203 @@ from pathlib import Path
 import imagesize
 from tqdm import tqdm
 
+COCO_CLASSES = [
+    "__background__",
+    "person",
+    "bicycle",
+    "car",
+    "motorcycle",
+    "airplane",
+    "bus",
+    "train",
+    "truck",
+    "boat",
+    "traffic light",
+    "fire hydrant",
+    "N/A",
+    "stop sign",
+    "parking meter",
+    "bench",
+    "bird",
+    "cat",
+    "dog",
+    "horse",
+    "sheep",
+    "cow",
+    "elephant",
+    "bear",
+    "zebra",
+    "giraffe",
+    "N/A",
+    "backpack",
+    "umbrella",
+    "N/A",
+    "N/A",
+    "handbag",
+    "tie",
+    "suitcase",
+    "frisbee",
+    "skis",
+    "snowboard",
+    "sports ball",
+    "kite",
+    "baseball bat",
+    "baseball glove",
+    "skateboard",
+    "surfboard",
+    "tennis racket",
+    "bottle",
+    "N/A",
+    "wine glass",
+    "cup",
+    "fork",
+    "knife",
+    "spoon",
+    "bowl",
+    "banana",
+    "apple",
+    "sandwich",
+    "orange",
+    "broccoli",
+    "carrot",
+    "hot dog",
+    "pizza",
+    "donut",
+    "cake",
+    "chair",
+    "couch",
+    "potted plant",
+    "bed",
+    "N/A",
+    "dining table",
+    "N/A",
+    "N/A",
+    "toilet",
+    "N/A",
+    "tv",
+    "laptop",
+    "mouse",
+    "remote",
+    "keyboard",
+    "cell phone",
+    "microwave",
+    "oven",
+    "toaster",
+    "sink",
+    "refrigerator",
+    "N/A",
+    "book",
+    "clock",
+    "vase",
+    "scissors",
+    "teddy bear",
+    "hair drier",
+    "toothbrush",
+    "N/A",
+]
+
+COCO_SUPERCATEGORIES = [
+    "__background__",
+    "person",  # person
+    "vehicle",  # bicycle
+    "vehicle",  # car
+    "vehicle",  # motorcycle
+    "vehicle",  # airplane
+    "vehicle",  # bus
+    "vehicle",  # train
+    "vehicle",  # truck
+    "vehicle",  # boat
+    "outdoor",  # traffic light
+    "outdoor",  # fire hydrant
+    "N/A",  # N/A
+    "outdoor",  # stop sign
+    "outdoor",  # parking meter
+    "outdoor",  # bench
+    "animal",  # bird
+    "animal",  # cat
+    "animal",  # dog
+    "animal",  # horse
+    "animal",  # sheep
+    "animal",  # cow
+    "animal",  # elephant
+    "animal",  # bear
+    "animal",  # zebra
+    "animal",  # giraffe
+    "N/A",  # N/A
+    "accessory",  # backpack
+    "accessory",  # umbrella
+    "N/A",  # N/A
+    "N/A",  # N/A
+    "accessory",  # handbag
+    "accessory",  # tie
+    "accessory",  # suitcase
+    "sports",  # frisbee
+    "sports",  # skis
+    "sports",  # snowboard
+    "sports",  # sports ball
+    "sports",  # kite
+    "sports",  # baseball bat
+    "sports",  # baseball glove
+    "sports",  # skateboard
+    "sports",  # surfboard
+    "sports",  # tennis racket
+    "kitchen",  # bottle
+    "kitchen",  # N/A
+    "kitchen",  # wine glass
+    "kitchen",  # cup
+    "kitchen",  # fork
+    "kitchen",  # knife
+    "kitchen",  # spoon
+    "kitchen",  # bowl
+    "food",  # banana
+    "food",  # apple
+    "food",  # sandwich
+    "food",  # orange
+    "food",  # broccoli
+    "food",  # carrot
+    "food",  # hot dog
+    "food",  # pizza
+    "food",  # donut
+    "food",  # cake
+    "furniture",  # chair
+    "furniture",  # couch
+    "furniture",  # potted plant
+    "furniture",  # bed
+    "N/A",  # N/A
+    "furniture",  # dining table
+    "N/A",  # N/A
+    "N/A",  # N/A
+    "furniture",  # toilet
+    "N/A",  # N/A
+    "electronic",  # tv
+    "electronic",  # laptop
+    "electronic",  # mouse
+    "electronic",  # remote
+    "electronic",  # keyboard
+    "electronic",  # cell phone
+    "appliance",  # microwave
+    "appliance",  # oven
+    "appliance",  # toaster
+    "appliance",  # sink
+    "appliance",  # refrigerator
+    "N/A",  # N/A
+    "indoor",  # book
+    "indoor",  # clock
+    "indoor",  # vase
+    "indoor",  # scissors
+    "indoor",  # teddy bear
+    "indoor",  # hair drier
+    "indoor",  # toothbrush
+    "N/A",  # N/A
+]
+
+COCO_CATEGORY_IDS = {
+    COCO_CLASSES[i]: i for i, cls in enumerate(COCO_CLASSES) if cls != "N/A" and cls != "__background__"
+}
+
+MIN_ID = COCO_CATEGORY_IDS["person"]
+MAX_ID = COCO_CATEGORY_IDS["toothbrush"]
+
 SFUHW_FORMAT = {
     "object_id": 0,
     "bbox_center_x": 1,
@@ -111,7 +308,7 @@ SFUHW_TO_COCO_SUPERCATEGORY = {
 }
 
 
-def convert(sequence_dir, annotation_dir, output, remap, scale, vtmbms_dir, check_all_data, separate):
+def convert(sequence_dir, annotation_dir, output, scale, vtmbms_dir, check_all_data, separate):
     # images
     coco_images_per_seq = cl.OrderedDict()
     coco_images = []
@@ -180,7 +377,7 @@ def convert(sequence_dir, annotation_dir, output, remap, scale, vtmbms_dir, chec
             iheight = int(height)
             print("# VTMBMS Block Statistics", file=vtmf)
             print(f"# Sequence size: [{iwidth}x{iheight}]", file=vtmf)
-            print("# Block Statistic Type: CATEGORY; Integer; [0, 77]", file=vtmf)
+            print("# Block Statistic Type: CATEGORY_ID; Integer; [{MIN_ID}, {MAX_ID}]", file=vtmf)
 
         txtlist = sorted(glob.glob(annotation_dir + f"/{cls}/{key}/{seq}_seq_*.txt"))
         if len(txtlist) == 0 and (key == "RaceHorsesC" or key == "RaceHorsesD"):
@@ -198,8 +395,7 @@ def convert(sequence_dir, annotation_dir, output, remap, scale, vtmbms_dir, chec
                 with open(txt, mode="r") as f:
                     for row in csv.reader(f, delimiter=" "):
                         cid = int(row[SFUHW_FORMAT["object_id"]])
-                        if remap:
-                            cid = SFUHW_TO_COCO_ID[SFUHW_CATEGORIES[cid]]
+                        cid = SFUHW_TO_COCO_ID[SFUHW_CATEGORIES[cid]]
 
                         normalized_bbox_center_x = float(row[SFUHW_FORMAT["bbox_center_x"]])
                         normalized_bbox_center_y = float(row[SFUHW_FORMAT["bbox_center_y"]])
@@ -271,11 +467,14 @@ def convert(sequence_dir, annotation_dir, output, remap, scale, vtmbms_dir, chec
 
     # categories
     coco_categories = []
-    for cid, cat in SFUHW_CATEGORIES.items():
-        supercat = SFUHW_TO_COCO_SUPERCATEGORY[cat]
-        if remap:
-            cid = SFUHW_TO_COCO_ID[cat]
-        coco_categories.append({"id": cid, "name": cat, "supercategory": supercat})
+    for category_name, category_id in COCO_CATEGORY_IDS.items():
+        coco_categories.append(
+            {
+                "id": category_id,
+                "name": category_name,
+                "supercategory": COCO_SUPERCATEGORIES[category_id],
+            }
+        )
 
     if separate:
         for key, imgs, annos in zip(
@@ -308,7 +507,6 @@ def main():
     parser.add_argument("dataset_dir", help="dataset directory")
     parser.add_argument("annotation_dir", help="annotation directory")
     parser.add_argument("output", help="output annotation file")
-    parser.add_argument("-remap", "--remap", action="store_false")
     parser.add_argument("-scale", "--scale", type=float, default=1.0)
     parser.add_argument("-check_all_data", "--check_all_data", action="store_true")
     parser.add_argument("-vtmbms_dir", "--vtmbms_dir", default="")
@@ -319,7 +517,6 @@ def main():
         args.dataset_dir,
         args.annotation_dir,
         args.output,
-        args.remap,
         args.scale,
         args.vtmbms_dir,
         args.check_all_data,

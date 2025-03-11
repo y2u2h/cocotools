@@ -100,6 +100,7 @@ COCO_CLASSES = [
 ]
 
 COCO_SUPERCATEGORIES = [
+    "__background__",
     "person",  # person
     "vehicle",  # bicycle
     "vehicle",  # car
@@ -196,6 +197,7 @@ COCO_SUPERCATEGORIES = [
 COCO_CATEGORY_IDS = {
     COCO_CLASSES[i]: i for i, cls in enumerate(COCO_CLASSES) if cls != "N/A" and cls != "__background__"
 }
+
 MIN_ID = COCO_CATEGORY_IDS["person"]
 MAX_ID = COCO_CATEGORY_IDS["toothbrush"]
 
