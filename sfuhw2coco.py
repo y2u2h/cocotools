@@ -201,8 +201,8 @@ COCO_CATEGORY_IDS = {
     COCO_CLASSES[i]: i for i, cls in enumerate(COCO_CLASSES) if cls != "N/A" and cls != "__background__"
 }
 
-MIN_ID = COCO_CATEGORY_IDS["person"]
-MAX_ID = COCO_CATEGORY_IDS["toothbrush"]
+COCO_MIN_ID = COCO_CATEGORY_IDS["person"]
+COCO_MAX_ID = COCO_CATEGORY_IDS["toothbrush"]
 
 SFUHW_OBJECT_FORMAT = {
     "class_id": 0,
@@ -384,7 +384,7 @@ def convert_all(annotation_dir, output, sequence_dir, track, scale):
                         bh = height - bt if (bt + bh) > height else bh
                         area = bw * bh
 
-                        if area > 0:
+                        if area > 0 and category_id >= COCO_MIN_ID and category_id <= COCO_MAX_ID:
                             coco_annotations.append(
                                 {
                                     "id": annotation_id,
@@ -458,7 +458,7 @@ def convert_separate(annotation_dir, output, track, scale, vtmbms):
             vtmbmsstats = open(str(outdir) + "/" + key + ".vtmbmsstats", "w")
             print("# VTMBMS Block Statistics", file=vtmbmsstats)
             print(f"# Sequence size: [{width}x{height}]", file=vtmbmsstats)
-            print(f"# Block Statistic Type: CATEGORY_ID; Integer; [{MIN_ID}, {MAX_ID}]", file=vtmbmsstats)
+            print(f"# Block Statistic Type: CATEGORY_ID; Integer; [{COCO_MIN_ID}, {COCO_MAX_ID}]", file=vtmbmsstats)
 
         txtlist_name = annotation_dir + f"/{cls}/{key}/{prefix}_seq_*.txt"
         txtlist = sorted(glob.glob(txtlist_name))
@@ -504,7 +504,7 @@ def convert_separate(annotation_dir, output, track, scale, vtmbms):
                         bh = height - bt if (bt + bh) > height else bh
                         area = bw * bh
 
-                        if area > 0:
+                        if area > 0 and category_id >= COCO_MIN_ID and category_id <= COCO_MAX_ID:
                             coco_annotations[key].append(
                                 {
                                     "id": annotation_id,
@@ -552,14 +552,19 @@ def convert_separate(annotation_dir, output, track, scale, vtmbms):
     # output file
     for (img_key, imgs), (anno_key, annos) in zip(coco_images.items(), coco_annotations.items()):
         if img_key == anno_key:
+            outdir = pathlib.Path(output)
+            outdir.mkdir(parents=True, exist_ok=True)
+
+            coco_dict = cl.OrderedDict()
+            coco_dict = annos
+            with open(outdir.joinpath(img_key + ".json"), mode="w") as f:
+                json.dump(coco_dict, f, indent=2)
+
             coco_dict = cl.OrderedDict()
             coco_dict["images"] = imgs
             coco_dict["annotations"] = annos
             coco_dict["categories"] = coco_categories
-
-            outdir = pathlib.Path(output)
-            outdir.mkdir(parents=True, exist_ok=True)
-            with open(outdir.joinpath(img_key + ".json"), mode="w") as f:
+            with open(outdir.joinpath(img_key + "_gt.json"), mode="w") as f:
                 json.dump(coco_dict, f, indent=2)
         else:
             print(f"img_key={img_key} is not equal to anno_key={anno_key}")
